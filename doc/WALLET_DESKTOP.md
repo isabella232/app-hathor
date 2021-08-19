@@ -4,12 +4,13 @@
 
 We will teach how to connect a ledger Nano S device with hathor wallet and how to operate the main features of the wallet with the ledger device.
 
-Hathor desktop wallet features with ledger device:
+### Table of contents
 
-- View TX history
-- View TX info
-- View public address to receive tokens
-- Send HTR Tokens
+- [How to connect the wallet with your Nano S](#connect)
+- [View TX history](#view-tx-history)
+- [View TX Info](#view-tx-info)
+- [View Public Address](#view-public-address)
+- [Send HTR Tokens](#send-htr-tokens)
 
 ## Connect
 
