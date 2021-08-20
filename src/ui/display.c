@@ -294,7 +294,6 @@ UX_FLOW(ux_display_address_flow,
         &ux_display_path_step,
         &ux_display_address_step,
         &ux_display_approve_step,
-        &ux_display_reject_step,
         FLOW_LOOP);
 
 int ui_display_confirm_address() {
