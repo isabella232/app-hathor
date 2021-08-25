@@ -22,9 +22,19 @@
 
 static action_validate_cb g_validate_callback;
 static char g_amount[30];
-static char g_bip32_path[60];
 static char g_output_index[10];
 static char g_address[B58_ADDRESS_LEN];
+#ifdef UI_SHOW_PATH
+static char g_bip32_path[60];
+
+// Step with title/text for BIP32 path
+UX_STEP_NOCB(ux_display_path_step,
+             bnnn_paging,
+             {
+                 .title = "Path",
+                 .text = g_bip32_path,
+             });
+#endif
 
 /**
  * Clean context and return to menu.
@@ -43,13 +53,6 @@ UX_STEP_NOCB(ux_display_processing_step,
 
 UX_STEP_VALID(ux_sendtx_exit_step, pb, action_exit_to_menu(), {&C_icon_crossmark, "Quit"});
 
-// Step with title/text for BIP32 path
-UX_STEP_NOCB(ux_display_path_step,
-             bnnn_paging,
-             {
-                 .title = "Path",
-                 .text = g_bip32_path,
-             });
 // Step with title/text for address
 UX_STEP_NOCB(ux_display_address_step,
              bnnn_paging,
@@ -247,13 +250,15 @@ int ui_display_tx_outputs() {
 
 /* FLOW to display confirm access to XPUB:
  *  #1 screen: eye icon + "Confirm Access?"
- *  #2 screen: display BIP32 Path
+ *  #2 screen: display BIP32 Path (if enabled)
  *  #3 screen: approve button
  *  #4 screen: reject button
  */
 UX_FLOW(ux_display_xpub_flow,
         &ux_display_confirm_step,
+#ifdef UI_SHOW_PATH
         &ux_display_path_step,
+#endif
         &ux_display_approve_step,
         &ux_display_reject_step,
         FLOW_LOOP);
@@ -264,6 +269,7 @@ int ui_display_xpub_confirm() {
         return io_send_sw(SW_BAD_STATE);
     }
 
+#ifdef UI_SHOW_PATH
     memset(g_bip32_path, 0, sizeof(g_bip32_path));
 
     if (!bip32_path_format(G_context.bip32_path.path,
@@ -272,6 +278,7 @@ int ui_display_xpub_confirm() {
                            sizeof(g_bip32_path))) {
         return io_send_sw(SW_DISPLAY_BIP32_PATH_FAIL);
     }
+#endif
 
     g_validate_callback = &ui_action_confirm_xpub;  // send xpub from bip32 path
 
@@ -284,14 +291,16 @@ int ui_display_xpub_confirm() {
 
 /* FLOW to display confirm address:
  *  #1 screen: eye icon + "Confirm Address?"
- *  #2 screen: display BIP32 Path
+ *  #2 screen: display BIP32 Path (if enabled)
  *  #3 screen: display address
  *  #4 screen: approve button
  *  #5 screen: reject button
  */
 UX_FLOW(ux_display_address_flow,
         &ux_display_confirm_addr_step,
+#ifdef UI_SHOW_PATH
         &ux_display_path_step,
+#endif
         &ux_display_address_step,
         &ux_display_approve_step,
         &ux_display_reject_step,
@@ -303,15 +312,17 @@ int ui_display_confirm_address() {
         return io_send_sw(SW_BAD_STATE);
     }
 
-    memset(g_bip32_path, 0, sizeof(g_bip32_path));
     memset(g_address, 0, sizeof(g_address));
 
+#ifdef UI_SHOW_PATH
+    memset(g_bip32_path, 0, sizeof(g_bip32_path));
     if (!bip32_path_format(G_context.bip32_path.path,
                            G_context.bip32_path.length,
                            g_bip32_path,
                            sizeof(g_bip32_path))) {
         return io_send_sw(SW_DISPLAY_BIP32_PATH_FAIL);
     }
+#endif
 
     cx_ecfp_private_key_t private_key = {0};
     cx_ecfp_public_key_t public_key = {0};
