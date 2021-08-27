@@ -70,7 +70,6 @@ class Command:
 
         # Go to approve screen (screen loops back)
         button.left_click()
-        button.left_click()
         # Approve
         button.both_click()
 
@@ -79,7 +78,15 @@ class Command:
         if sw != 0x9000:
             raise DeviceException(error_code=sw, ins=InsType.INS_GET_ADDRESS)
 
-        return
+    def get_address_with_error(self, button: Button, bip32_path: str) -> str:
+        sw, response = self.transport.exchange_raw(
+            self.builder.get_address(bip32_path)
+        )  # type: int, bytes
+
+        if sw != 0x9000:
+            raise DeviceException(error_code=sw, ins=InsType.INS_GET_VERSION)
+
+        raise Exception('THIS MUST RETURN ERROR')
 
     def get_xpub(self, button: Button, bip32_path: str) -> Tuple[bytes, bytes]:
         self.transport.send_raw(self.builder.get_xpub(bip32_path=bip32_path))

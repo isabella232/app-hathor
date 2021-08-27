@@ -5,13 +5,15 @@ import pytest
 from ledgercomm import Transport
 
 from app_client.cmd import Command
-from app_client.button import ButtonTCP, ButtonFake
+from app_client.button import ButtonHTTP, ButtonTCP, ButtonFake
 
 
 def pytest_addoption(parser):
     parser.addoption("--hid",
                      action="store_true")
     parser.addoption("--headless",
+                     action="store_true")
+    parser.addoption("--tcp",
                      action="store_true")
 
 
@@ -37,11 +39,18 @@ def hid(pytestconfig):
 def headless(pytestconfig):
     return pytestconfig.getoption("headless")
 
+@pytest.fixture(scope="session")
+def tcp(pytestconfig):
+    return pytestconfig.getoption("tcp")
+
 
 @pytest.fixture(scope="module")
-def button(headless):
+def button(headless, tcp):
     if headless:
-        button_client = ButtonTCP(server="127.0.0.1", port=42000)
+        if tcp:
+            button_client = ButtonTCP(server="127.0.0.1", port=42000)
+        else:
+            button_client = ButtonHTTP(domain='http://127.0.0.1:5000')
     else:
         button_client = ButtonFake()
 

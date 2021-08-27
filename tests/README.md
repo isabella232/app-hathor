@@ -15,10 +15,27 @@ First start your application with Speculos
 ./path/to/speculos.py /path/to/app.elf --ontop --sdk 2.0
 ```
 
-then in the `tests` folder run
+If you do not want to launch the http button api, use the tcp instead:
 
 ```
-pytest
+python /speculos/speculos.py bin/app.elf --apdu-port 9999 --button-port 42000 --automation-port 43000 --ontop --sdk 2.0
+```
+
+### Run tests
+
+First go to the `tests` folder.
+
+For automated tests run:
+
+```
+pytest --headless
+```
+
+For manual tests the command is `pytest`.
+
+And if using the TCP interface (only for automated):
+```
+pytest --headless --tcp
 ```
 
 ### Launch with your Nano S/X
