@@ -3,6 +3,7 @@
 #include <stddef.h>  // size_t
 #include <stdint.h>  // uint*_t
 
+#include "os.h"
 #include "cx.h"
 
 #include "constants.h"
