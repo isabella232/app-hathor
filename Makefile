@@ -75,6 +75,10 @@ DEFINES += UNUSED\(x\)=\(void\)x
 # endif
 DEFINES += IO_SEPROXYHAL_BUFFER_SIZE_B=128
 
+# Ledger: add the "Pending security review" disclaimer
+APP_LOAD_PARAMS += --tlvraw 9F:01
+DEFINES += HAVE_PENDING_REVIEW_SCREEN
+
 DEBUG = 0
 ifneq ($(DEBUG),0)
     DEFINES += HAVE_PRINTF
