@@ -4,8 +4,12 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "os.h"
+#ifndef TEST
 #include "ux.h"
+#include "cx.h"
+#else
+#include "stubs.h"
+#endif
 #include "glyphs.h"
 
 #include "display.h"
@@ -294,7 +298,6 @@ int ui_display_xpub_confirm() {
  *  #2 screen: display BIP32 Path (if enabled)
  *  #3 screen: display address
  *  #4 screen: approve button
- *  #5 screen: reject button
  */
 UX_FLOW(ux_display_address_flow,
         &ux_display_confirm_addr_step,
