@@ -1,15 +1,22 @@
 #include "storage.h"
+#include <string.h>
 
-uint32_t get_secret() {
-    if (N_storage.secret == 0) {
-        // first access, generate and write to storage
-        return generate_secret();
+#include "os.h"
+
+void get_secret(uint8_t* secret) {
+    for (uint8_t i = 0; i < SECRET_LEN; i++) {
+        if (*(N_storage.secret + i) != 0) {
+            memmove(secret, (const uint8_t*) N_storage.secret, SECRET_LEN);
+            return;
+        }
     }
-    return (volatile uint32_t) N_storage.secret;
+    // first access, generate and write to storage
+    generate_secret();
+    memmove(secret, (const uint8_t*) N_storage.secret, SECRET_LEN);
 }
 
-uint32_t generate_secret() {
-    uint32_t new_secret = cx_rng_u32();
-    nvm_write((void *) &N_storage.secret, &new_secret, sizeof(uint32_t));
-    return new_secret;
+void generate_secret() {
+    uint8_t new_secret[SECRET_LEN];
+    cx_rng_no_throw(new_secret, SECRET_LEN);
+    nvm_write((void*) &N_storage.secret, &new_secret, SECRET_LEN);
 }

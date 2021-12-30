@@ -10,6 +10,7 @@
 #endif
 
 #include "constants.h"
+#include "token/types.h"
 #include "transaction/types.h"
 #include "common/bip32.h"
 
@@ -122,5 +123,5 @@ typedef struct {
  */
 
 typedef struct internalStorage_t {
-    uint32_t secret;
+    uint8_t secret[SECRET_LEN];
 } internalStorage_t;
