@@ -4,30 +4,29 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifndef TEST
 #include "ux.h"
 #include "cx.h"
-#else
-#include "stubs.h"
-#endif
+
 #include "glyphs.h"
 
-#include "display.h"
-#include "constants.h"
+#include "../common/base58.h"
+#include "../common/format.h"
+#include "../constants.h"
 #include "../globals.h"
+#include "../hathor.h"
+#include "../storage.h"
 #include "../sw.h"
 #include "action/validate.h"
-#include "../common/format.h"
+#include "display.h"
 #include "menu.h"
-
-#include "../hathor.h"
-
-#include "../common/base58.h"
 
 static action_validate_cb g_validate_callback;
 static char g_amount[30];
 static char g_output_index[10];
 static char g_address[B58_ADDRESS_LEN];
+static char g_token_symbol[6];
+static char g_token_name[31];
+static char g_token_uid[65];
 #ifdef UI_SHOW_PATH
 static char g_bip32_path[60];
 
@@ -112,6 +111,48 @@ UX_STEP_NOCB(ux_display_confirm_step,
                  &C_icon_eye,
                  "Confirm",
                  "access?",
+             });
+
+UX_STEP_NOCB(ux_display_reset_token_signatures_alert,
+             pn,
+             {
+                 &C_icon_eye,
+                 "Reset token signatures",
+             });
+
+UX_STEP_NOCB(ux_display_reset_token_signatures_warning,
+             bnnn_paging,
+             {
+                 .title = "Warning",
+                 .text = "This action will reset all token signatures",
+             });
+
+UX_STEP_NOCB(ux_display_token_data_0,
+             pn,
+             {
+                 &C_icon_eye,
+                 "Confirm token data",
+             });
+
+UX_STEP_NOCB(ux_display_token_data_1_symbol,
+             bnnn_paging,
+             {
+                 .title = "Symbol",
+                 .text = g_token_symbol,
+             });
+
+UX_STEP_NOCB(ux_display_token_data_2_name,
+             bnnn_paging,
+             {
+                 .title = "Name",
+                 .text = g_token_name,
+             });
+
+UX_STEP_NOCB(ux_display_token_data_3_uid,
+             bnnn_paging,
+             {
+                 .title = "UID",
+                 .text = g_token_uid,
              });
 
 // Display a "Processing" message and allow user to stop processing and quit to menu
@@ -207,8 +248,23 @@ void prepare_display_output() {
 
     // set g_ammount (HTR value)
     memset(g_amount, 0, sizeof(g_amount));
-    strcpy(g_amount, "HTR ");
-    format_value(output.value, g_amount + 4);
+    int8_t token_index = output.token_data & TOKEN_DATA_INDEX_MASK;
+    char symbol[MAX_TOKEN_SYMBOL_LEN + 1];
+    uint8_t symbol_len;
+
+    // token_index == 0 means HTR, else use token_index-1 as index on the tokens array
+    if (token_index == 0) {
+        strcpy(symbol, "HTR");
+        symbol_len = 3;
+    } else {
+        // custom token
+        token_symbol_t* token = G_context.tx_info.tokens[token_index - 1];
+        strcpy(symbol, token->symbol);
+        symbol_len = strlen(token->symbol);
+    }
+    strcpy(g_amount, symbol);
+    g_amount[symbol_len] = ' ';
+    format_value(output.value, g_amount + symbol_len + 1);
 }
 
 void ui_confirm_output(bool choice) {
@@ -352,5 +408,71 @@ int ui_display_confirm_address() {
 
     ux_flow_init(0, ux_display_address_flow, NULL);
 
+    return 0;
+}
+
+// Reset token signatures: ui_display_confirm_address
+
+void ui_confirm_reset_token_signatures(bool choice) {
+    if (choice) {
+        // generates and saves new secret
+        generate_secret();
+        io_send_sw(SW_OK);
+    } else {
+        // return error, denied by user
+        io_send_sw(SW_DENY);
+    }
+    ui_menu_main();
+}
+
+/* FLOW to display confirm address:
+ *  #1 screen: eye icon + "Reset token signatures"
+ *  #2 screen: warning message
+ *  #3 screen: approve button
+ *  #4 screen: reject button
+ */
+UX_FLOW(ux_display_reset_token_signatures,
+        &ux_display_reset_token_signatures_alert,
+        &ux_display_reset_token_signatures_warning,
+        &ux_display_approve_step,
+        &ux_display_reject_step,
+        FLOW_LOOP);
+
+int ui_display_reset_token_signatures_confirm() {
+    g_validate_callback = &ui_confirm_reset_token_signatures;
+    ux_flow_init(0, ux_display_reset_token_signatures, NULL);
+    return 0;
+}
+
+/* FLOW to sign token data:
+ *  #1 screen: eye icon + "Confirm token data"
+ *  #2 screen: symbol
+ *  #2 screen: name
+ *  #2 screen: uid
+ *  #3 screen: approve button
+ *  #4 screen: reject button
+ */
+UX_FLOW(ux_display_sign_token_data,
+        &ux_display_token_data_0,
+        &ux_display_token_data_1_symbol,
+        &ux_display_token_data_2_name,
+        &ux_display_token_data_3_uid,
+        &ux_display_approve_step,
+        &ux_display_reject_step,
+        FLOW_LOOP);
+
+int ui_display_sign_token_data() {
+    // show token information
+    // copy symbol
+    memmove(g_token_symbol, G_context.token.symbol, G_context.token.symbol_len);
+    g_token_symbol[G_context.token.symbol_len] = '\0';
+    // copy name
+    memmove(g_token_name, G_context.token.name, G_context.token.name_len);
+    g_token_name[G_context.token.name_len] = '\0';
+    // format uid
+    format_hex(G_context.token.uid, TOKEN_UID_LEN, g_token_uid, 65);
+    // ask confirmation to sign
+    g_validate_callback = &ui_action_sign_token_data;
+    ux_flow_init(0, ux_display_sign_token_data, NULL);
     return 0;
 }
