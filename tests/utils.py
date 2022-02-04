@@ -1,5 +1,6 @@
 from typing import Optional
 
+import hathorlib
 from faker import Faker
 
 from app_client.token import Token
@@ -13,9 +14,9 @@ def fake_path() -> str:
 
 
 def fake_script() -> bytes:
-    pkh = fake.binary(length=20)
-    # P2PKH script with random pubkey hash
-    return b"".join([b"\x76\xa9\x14", pkh, b"\x88\xac"])
+    """Output P2PKH script for a random address"""
+    # return b"".join([b"\x76\xa9\x14", pkh, b"\x88\xac"])
+    return hathorlib.scripts.P2PKH.create_output_script(fake.binary(length=25))
 
 
 def fake_input() -> TxInput:

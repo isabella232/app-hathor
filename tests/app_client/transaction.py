@@ -1,7 +1,12 @@
+import hashlib
 from io import BytesIO
 from typing import List, Union
 
-from app_client.utils import read, read_int, read_uint, read_var
+import hathorlib
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+
+from app_client.utils import bip32_path_from_string, read, read_int, read_uint, read_var
 
 
 class TransactionError(Exception):
@@ -9,7 +14,7 @@ class TransactionError(Exception):
 
 
 class TxInput:
-    def __init__(self, tx_id: bytes, index: int, bip32_path: List[int] = None):
+    def __init__(self, tx_id: bytes, index: int, bip32_path: str = None):
         assert len(tx_id) == 32
         self.tx_id = tx_id
         self.index = index
@@ -19,18 +24,6 @@ class TxInput:
         return b"".join(
             [self.tx_id, self.index.to_bytes(1, byteorder="big"), b"\x00\x00"]
         )
-
-    def validate_address(self, bip32_path: List[int]) -> bool:
-        if self.bip32_path is None:
-            raise TransactionError("Input: no self.bip32_path")
-
-        if len(bip32_path) != len(self.bip32_path):
-            return False
-
-        for i in range(len(bip32_path)):
-            if self.bip32_path[i] != bip32_path[i]:
-                return False
-        return True
 
     @classmethod
     def from_bytes(cls, hexa: Union[bytes, BytesIO]):
@@ -119,11 +112,15 @@ class Transaction:
         self.tokens = tokens
         self.inputs = inputs
         self.outputs = outputs
+        self.sighash_all = None
 
     def serialize(self) -> bytes:
         """This serialize returns the number of complete outputs on each chunk
         this is imperative for testing, we need to know how many outputs to confirm
         """
+        if self.sighash_all is not None:
+            return self.sighash_all
+
         cdata = b"".join(
             [
                 self.tx_version.to_bytes(2, byteorder="big"),
@@ -144,7 +141,8 @@ class Transaction:
             output_bytes = tx_output.serialize()
             cdata = b"".join([cdata, output_bytes])
 
-        return cdata
+        self.sighash_all = cdata
+        return self.sighash_all
 
     @classmethod
     def from_bytes(cls, hexa: Union[bytes, BytesIO]):
@@ -178,3 +176,42 @@ class Transaction:
         sinputs = [str(inp) for inp in self.inputs]
         soutputs = [str(outp) for outp in self.outputs]
         return f"Transaction(tokens={stokens}, inputs={sinputs}, outputs={soutputs})"
+
+    def verify_signature(self, signature: bytes, public_key_bytes: bytes):
+        """Verify signature from `self.serialize` that returns the sighash_all bytes
+        and `public_key_bytes` which is the compressed pubkey bytes
+        """
+        hash_ctx = hashlib.sha256()
+        hash_ctx.update(self.serialize())
+        pubkey = hathorlib.utils.get_public_key_from_bytes_compressed(public_key_bytes)
+        return pubkey.verify(signature, hash_ctx.digest(), ec.ECDSA(hashes.SHA256()))
+
+
+class ChangeInfo:
+    def __init__(self, output_index: int, path: str) -> None:
+        self.output_index = output_index
+        self.path = path
+
+    @property
+    def bip32_path(self) -> List[bytes]:
+        return bip32_path_from_string(self.path)
+
+    def serialize(self) -> bytes:
+        bip32_path = self.bip32_path
+        return b"".join(
+            [
+                self.output_index.to_bytes(1, byteorder="big"),
+                len(bip32_path).to_bytes(1, byteorder="big"),
+                *bip32_path,
+            ]
+        )
+
+    def old_proto_bytes(self) -> bytes:
+        bip32_path = self.bip32_path
+        return b"".join(
+            [
+                (0x80 | len(bip32_path)).to_bytes(1, byteorder="big"),
+                self.output_index.to_bytes(1, byteorder="big"),
+                *bip32_path,
+            ]
+        )
