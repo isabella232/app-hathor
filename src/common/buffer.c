@@ -1,7 +1,4 @@
-#include <stdint.h>   // uint*_t
-#include <stddef.h>   // size_t
-#include <stdbool.h>  // bool
-#include <string.h>   // memmove
+#include <string.h>  // memmove
 
 #include "buffer.h"
 #include "read.h"
@@ -106,6 +103,18 @@ bool buffer_read_bip32_path(buffer_t *buffer, bip32_path_t *out) {
 
     // 1 byte of path_length + 4*path_length of data
     buffer_seek_cur(buffer, 1 + (sizeof(out->path[0]) * out->length));
+
+    return true;
+}
+
+bool buffer_read_bytes(buffer_t *buffer, uint8_t *out, size_t out_len, size_t len) {
+    if (len > buffer->size - buffer->offset || len > out_len) {
+        return false;
+    }
+
+    memmove(out, buffer->ptr + buffer->offset, len);
+
+    buffer_seek_cur(buffer, len);
 
     return true;
 }
