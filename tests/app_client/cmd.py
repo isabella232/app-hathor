@@ -1,24 +1,21 @@
 import struct
-from typing import Tuple, List
-
-from ledgercomm import Transport
+from typing import List, Tuple
 
 from app_client.cmd_builder import CommandBuilder, InsType
-from app_client.button import Button
 from app_client.exception import DeviceException
-from app_client.transaction import Transaction
+from app_client.token import Token
+from app_client.transaction import ChangeInfo, Transaction
+from app_client.transport import ApduTransport
 
 
 class Command:
-    def __init__(self,
-                 transport: Transport,
-                 debug: bool = False) -> None:
-        self.transport = transport
+    def __init__(self, transport: ApduTransport, debug: bool = False) -> None:
         self.builder = CommandBuilder(debug=debug)
         self.debug = debug
+        self.transport = transport
 
     def get_app_and_version(self) -> Tuple[str, str]:
-        sw, response = self.transport.exchange_raw(
+        sw, response = self.transport.exchange_apdu_raw(
             self.builder.get_app_and_version()
         )  # type: int, bytes
 
@@ -32,23 +29,21 @@ class Command:
         #            version (var) ||
         offset: int = 0
 
-        format_id: int = response[offset]
+        # format_id: int = response[offset]
         offset += 1
         app_name_len: int = response[offset]
         offset += 1
-        app_name: str = response[offset:offset + app_name_len].decode("ascii")
+        app_name: str = response[offset : offset + app_name_len].decode("ascii")
         offset += app_name_len
         version_len: int = response[offset]
         offset += 1
-        version: str = response[offset:offset + version_len].decode("ascii")
+        version: str = response[offset : offset + version_len].decode("ascii")
         offset += version_len
 
         return app_name, version
 
     def get_version(self) -> Tuple[bytes, int, int, int]:
-        sw, response = self.transport.exchange_raw(
-            self.builder.get_version()
-        )  # type: int, bytes
+        sw, response = self.transport.exchange_apdu_raw(self.builder.get_version())
 
         if sw != 0x9000:
             raise DeviceException(error_code=sw, ins=InsType.INS_GET_VERSION)
@@ -57,40 +52,28 @@ class Command:
         assert len(response) == 6
 
         h, t, r, major, minor, patch = struct.unpack(
-            "cccBBB",
-            response
+            "cccBBB", response
         )  # type: bytes, bytes, bytes, int, int, int
 
-        htr = b''.join([h, t, r])
+        htr = b"".join([h, t, r])
 
         return htr, major, minor, patch
 
-    def get_address(self, button: Button, bip32_path: str) -> str:
-        self.transport.send_raw(self.builder.get_address(bip32_path))
+    def get_address(self, bip32_path: str) -> str:
 
-        # Go to approve screen (screen loops back)
-        button.left_click()
-        button.left_click()
-        # Approve
-        button.both_click()
-
-        sw, response = self.transport.recv()  # type: int, bytes
+        sw, response = self.transport.exchange_apdu_raw(
+            self.builder.get_address(bip32_path)
+        )
 
         if sw != 0x9000:
             raise DeviceException(error_code=sw, ins=InsType.INS_GET_ADDRESS)
 
         return
 
-    def get_xpub(self, button: Button, bip32_path: str) -> Tuple[bytes, bytes]:
-        self.transport.send_raw(self.builder.get_xpub(bip32_path=bip32_path))
-
-        # Go to approve screen (screen loops back)
-        button.left_click()
-        button.left_click()
-        # Approve
-        button.both_click()
-
-        sw, response = self.transport.recv()  # type: int, bytes
+    def get_xpub(self, bip32_path: str) -> Tuple[bytes, bytes]:
+        sw, response = self.transport.exchange_apdu_raw(
+            self.builder.get_xpub(bip32_path=bip32_path)
+        )
 
         if sw != 0x9000:
             raise DeviceException(error_code=sw, ins=InsType.INS_GET_XPUB)
@@ -102,55 +85,91 @@ class Command:
         pub_key_len: int = 65
         chain_code_len: int = 32
 
-        pub_key: bytes = response[offset:offset + pub_key_len]
+        pub_key: bytes = response[offset : offset + pub_key_len]
         offset += pub_key_len
-        chain_code: bytes = response[offset:offset + chain_code_len]
+        chain_code: bytes = response[offset : offset + chain_code_len]
         offset += chain_code_len
-        fingerprint: bytes = response[offset:offset + 4]
+        fingerprint: bytes = response[offset : offset + 4]
         offset += 4
 
         assert len(response) == pub_key_len + chain_code_len + 4
 
         return pub_key, chain_code, fingerprint
 
-    def sign_tx(self, button: Button, transaction: Transaction, has_change: bool = False, change_index:int = None, change_path: str = None) -> List[bytes]:
-        def handle_data(num_outputs: int, is_last: bool):
-            for _ in range(num_outputs):
-                # Go to approve screen (screen loops back)
-                button.left_click()
-                button.left_click()
-                # Approve
-                button.both_click()
-
-            if is_last:
-                # One more time for Send Transaction confirmation
-                # Go to approve screen (screen loops back)
-                button.left_click()
-                button.left_click()
-                # Approve
-                button.both_click()
+    def sign_tx(
+        self,
+        transaction: Transaction,
+        change_list: List["ChangeInfo"] = [],
+        use_old_protocol: bool = False,
+    ) -> List[bytes]:
 
         sw: int
         response: bytes = b""
 
         signatures: List[bytes] = []
-        stage = 0
-        for is_last, num_outputs, chunk in self.builder.sign_tx(transaction=transaction, has_change=has_change, change_index=change_index, bip32_path=change_path):
-            self.transport.send_raw(chunk)
-
-            if stage == 0:
-                handle_data(num_outputs, is_last)
-
-            sw, response = self.transport.recv()  # type: int, bytes
-            print('\n', 'ledger_resp:', sw, response)
+        for chunk in self.builder.sign_tx_send_data(
+            transaction=transaction,
+            change_list=change_list,
+            use_old_protocol=use_old_protocol,
+        ):
+            sw, response = self.transport.exchange_apdu_raw(chunk)
+            print("\n", "ledger_resp:", sw, response)
 
             if sw != 0x9000:
                 raise DeviceException(error_code=sw, ins=InsType.INS_SIGN_TX)
 
-            if stage == 1:
-                signatures.append(response)
+        # ask for signatures
+        for chunk in self.builder.sign_tx_signatures(transaction):
+            sw, response = self.transport.exchange_apdu_raw(chunk)
+            print("\n", "ledger_resp:", sw, response)
 
-            if is_last:
-                stage += 1
+            if sw != 0x9000:
+                raise DeviceException(error_code=sw, ins=InsType.INS_SIGN_TX)
+
+            signatures.append(response)
+
+        sw, response = self.transport.exchange_apdu_raw(self.builder.sign_tx_end())
+
+        if sw != 0x9000:
+            raise DeviceException(error_code=sw, ins=InsType.INS_SIGN_TX)
 
         return signatures
+
+    def sign_token_data(self, token: Token) -> bytes:
+        sw, response = self.transport.exchange_apdu_raw(
+            self.builder.sign_token_data(token)
+        )
+
+        if sw != 0x9000:
+            raise DeviceException(error_code=sw, ins=InsType.INS_GET_ADDRESS)
+
+        return response
+
+    def send_token_data(self, token: Token, signature: bytes, num: int = 0):
+        sw, response = self.transport.exchange_apdu_raw(
+            self.builder.send_token_data(token, signature, num=num)
+        )
+
+        if sw != 0x9000:
+            raise DeviceException(error_code=sw, ins=InsType.INS_GET_ADDRESS)
+
+    def send_token_data_list(self, tokens: List[Token], signatures: List[bytes]):
+        assert len(tokens) == len(signatures)
+        for i, token in enumerate(tokens):
+            self.send_token_data(token, signatures[i], num=i)
+
+    def verify_token_signature(self, token: Token, signature: bytes):
+        sw, response = self.transport.exchange_apdu_raw(
+            self.builder.verify_token_signature(token, signature)
+        )
+
+        if sw != 0x9000:
+            raise DeviceException(error_code=sw, ins=InsType.INS_GET_ADDRESS)
+
+    def reset_token_signatures(self):
+        sw, response = self.transport.exchange_apdu_raw(
+            self.builder.reset_token_signatures()
+        )
+
+        if sw != 0x9000:
+            raise DeviceException(error_code=sw, ins=InsType.INS_GET_ADDRESS)
